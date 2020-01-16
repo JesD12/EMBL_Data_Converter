@@ -3,7 +3,7 @@ import h5py
 import numpy as np
 import matplotlib.pyplot as plt
 
-#if not plt.isinteractive():
+# if not plt.isinteractive():
 #    plt.ion()
 
 path = 'c:\\EMBL data\\'
@@ -27,3 +27,5 @@ print(type(image_data_set))
 # plt.imshow(np.ones((25,25)))
 # plt.show()
 # print(image_data_set.shape())
+
+##Here would be room for update
