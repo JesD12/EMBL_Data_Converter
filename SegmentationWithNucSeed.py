@@ -39,79 +39,88 @@ def transfergroundtruth(GT_image, NewImage, ThresholdValue=0, AdaptiveThreshold=
     return np.uint8(GroundTruthImage - 1)
 
 
-path = 'e:\\EMBL data\\Jes 3D 3C plate 2__2019-12-11T10_29_03-Measurement 1\\Classification_Ilastik\\Control\\'
+path = 'e:\\EMBL data\\Jes 3D 3C plate 2__2019-12-11T10_29_03-Measurement 1\\Classification_Ilastik\\'
 filenameNuc = 'r01c03f06_5frames_MIP_GT.h5'
 filename2ch = 'r01c03f06_5frames_MIP.h5'
 
-rows = ['r01', 'r02', 'r03', 'r04', 'r05', 'r06', 'r07', 'r08']
+rows = ['r01', 'r02', 'r03','r04', 'r05', 'r06', 'r07', 'r08']
 columns = ['c01', 'c02', 'c03', 'c04', 'c05', 'c06', 'c07', 'c08', 'c09', 'c10', 'c11', 'c12']
-fields = ['f01', 'f02', 'f03', 'f04', 'f05', 'f06', 'f07', 'f08']
+fields = ['f01', 'f02', 'f03', 'f04', 'f05', 'f06', 'f07', 'f08','f09']
 
 for Labelindex, row in enumerate(rows):
     for Conditionindex, column in enumerate(columns):
+        if Conditionindex < 4:
+            Conditionfolder = 'Control\\'
+        elif Conditionindex < 8:
+            Conditionfolder = 'KiF23\\'
+        else:
+            Conditionfolder = 'ESPL\\'
+
         for field in fields:
-            filenameNuc = row+column+field+ '_5frames_MIP_GT.h5'
-            filename2ch = row+column+field+ '_5frames_MIP.h5'
-            #meed to load 3 files:
+            filenameNuc = row + column + field + '_5frames_MIP_new_GT.h5'
+            filename2ch = row + column + field + '_5frames_MIP.h5'
+            # print(filenameNuc)
+            # meed to load 3 files:
             # A: image with segmented and annotated nucleus,
             # B: Image with the actin channel common for all
             # C: channel with the green 'variable' channel
 
-            #A
-            with h5py.File(path + "Nucleus\\" + filenameNuc, 'r') as fNuc:
+            # A
+            with h5py.File(path + Conditionfolder + "Nucleus\\" + filenameNuc, 'r') as fNuc:
                 NucleusImageData = fNuc['exported_data'][()]
             SegmentedNucleus = NucleusImageData[0, 0, :, :, 0]
 
-            #B
-            with h5py.File(path + "actin_2ch\\" + filename2ch, 'r') as fAct:
+            # B
+            with h5py.File(path + Conditionfolder + "actin_2ch\\" + filename2ch, 'r') as fAct:
                 ImageDataActin = fAct['data'][()]
             # extract the two channels
             Actin = ImageDataActin[0, 0, :, :, 1]
             nucleus = ImageDataActin[0, 0, :, :, 0]
             ActNuc = Actin + nucleus
 
-            #tranfer the groundtruth
-            GroundTruthImageAct = transfergroundtruth(SegmentedNucleus, ActNuc, 500)
-            #show_n_images(SegmentedNucleus, bothchannels, GroundTruthImage)
+            # Transfer the groundtruth
+            GroundTruthImageAct = transfergroundtruth(SegmentedNucleus, Actin, 300)
+            # show_n_images(SegmentedNucleus, bothchannels, GroundTruthImage)
             GroundTruthExportAct = np.zeros((NucleusImageData.shape), 'uint8')
             GroundTruthExportAct[0, 0, :, :, 0] = GroundTruthImageAct
 
             # save the new h5 file
-            savefilename = filename2ch = 'r01c03f06_5frames_MIP_GT.h5'
-            with h5py.File(path + "actin_2ch\\" + savefilename, 'w') as fNew:
+
+            with h5py.File(path + Conditionfolder + "actin_2ch\\" + filenameNuc, 'w') as fNew:
                 fNew.create_dataset('exported_data', shape=GroundTruthExportAct.shape, data=GroundTruthExportAct)
 
-            #C
-            #determine what kind the green signal is (mito, tubulin or chromatin)
+            # C
+            # determine what kind the green signal is (mito, tubulin or chromatin)
             # Chromatin is a special case as the nucleus mask will just be used
             if row == 'r03' or row == 'r04':
                 subfolder = "Cromatin_2ch\\"
             elif row == 'r07' or row == 'r08':
                 subfolder = "Mito_2ch\\"
-                GFPTheshold = 500
+                GFPThreshold = 300
             else:
                 subfolder = "Tub_2ch\\"
-                GFPTheshold = 500
+                GFPThreshold = 300
 
             if subfolder == "Cromatin_2ch\\":
                 GroundTruthExportGFP = NucleusImageData
             else:
-                with h5py.File(path + subfolder + filename2ch, 'r') as fGFP:
+                with h5py.File(path + Conditionfolder + subfolder + filename2ch, 'r') as fGFP:
                     ImageDataGFP = fGFP['data'][()]
                 # extract the two channels
                 GFP = ImageDataGFP[0, 0, :, :, 1]
                 nucleus = ImageDataGFP[0, 0, :, :, 0]
                 GFPNuc = GFP + nucleus
 
-                # tranfer the groundtruth
-                GroundTruthImageGFP = transfergroundtruth(SegmentedNucleus, GFPNuc, GFPTheshold)
+                # transfer the groundtruth
+                GroundTruthImageGFP = transfergroundtruth(SegmentedNucleus, GFP, GFPThreshold)
                 # show_n_images(SegmentedNucleus, bothchannels, GroundTruthImage)
                 GroundTruthExportGFP = np.zeros((NucleusImageData.shape), 'uint8')
                 GroundTruthExportGFP[0, 0, :, :, 0] = GroundTruthImageGFP
 
-            with h5py.File(path + subfolder + savefilename, 'w') as fNewGFP:
-                fNewGFP.create_dataset('exported_data', GroundTruthExportGFP.shape, data= GroundTruthExportGFP)
+            with h5py.File(path + Conditionfolder + subfolder + filenameNuc, 'w') as fNewGFP:
+                fNewGFP.create_dataset('exported_data', GroundTruthExportGFP.shape, data=GroundTruthExportGFP)
+
+            #if field == 'f09':
+            #    show_n_images(SegmentedNucleus, ActNuc, GroundTruthImageAct, GFPNuc, GroundTruthImageGFP)
 
         print(f'Just finished row: {row}, column: {column}')
-
-
