@@ -8,10 +8,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import cv2
 
-path = 'c:\\EMBL data\\'
-filenameNuc = 'r01c01f03_5frames_MIP_GT.h5'  # this should be doublechecked.
-filename2ch = 'r01c01f03_5frames_MIP.h5'  # this should be doublechecked.
-
 
 def show_n_images(*images):
     f, axarr = plt.subplots(1, len(images))  # we need length of input images in a row
@@ -21,52 +17,101 @@ def show_n_images(*images):
     plt.show()
 
 
-with h5py.File(path + "nucleus test\\" + filenameNuc, 'r') as fNuc:
-    # print("Keys: %s" % fNuc.keys())
-    NucleusImageData = fNuc['exported_data_probability'][()]
+def transfergroundtruth(GT_image, NewImage, ThresholdValue=0, AdaptiveThreshold=False):
+    # generate a threshold image
+    if AdaptiveThreshold:
+        _, thresh_manual = cv2.threshold(NewImage.astype('uint8'), 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    else:
+        _, thresh_manual = cv2.threshold(NewImage, ThresholdValue, 255, cv2.THRESH_BINARY)
 
-with h5py.File(path + "actin_2ch\\" + filename2ch, 'r') as fGFP:
-    # print("Keys: %s" % fGFP.keys())
-    ImageData2Channel = fGFP['data'][()]
+    sure_bg = np.uint8(thresh_manual)
+    _, sure_fg = cv2.threshold(GT_image.astype('uint8'), 0, 255, cv2.THRESH_BINARY)
+    sure_fg = np.uint8(sure_fg)
 
-plt.imshow(NucleusImageData[0, 0, :, :, 0])
-SegmentedNucleus = NucleusImageData[0, 0, :, :, 0]
-plt.show()
-Actin = ImageData2Channel[0, 0, :, :, 1]
-nucleus = ImageData2Channel[0, 0, :, :, 0]
-bothchannels = Actin + nucleus
-show_n_images(Actin, nucleus, bothchannels,SegmentedNucleus)
-# Maxvalue= np.amax(Actin)
-# bothNorm= bothchannels/np.amax(bothchannels) * 255
-# bothEnhanced = bothchannels/np.quantile(bothchannels,0.5)*255
-# print(bothEnhanced.max())
-# bothEnhanced[bothEnhanced > 255] = 255
-# plt.imshow(bothEnhanced)
-# plt.show()
-# print(bothEnhanced.max())
-# print(bothchannels.max())
-# print(np.quantile(bothchannels,[0.5,0.8,0.9,0.95,0.99]))
-# hist, bin_edge = np.histogram(bothchannels, 100)
-# hist_norm, bin_edge_norm = np.histogram(bothNorm, 100)
-# hist_en, bin_edge_en = np.histogram(bothEnhanced, 100)
-# plt.plot(bin_edge[1:], hist,  bin_edge[1:], hist_en, bin_edge[1:], hist_norm)
+    # unknwon define the area we want the watershed to fill out (the segmenented - the nucleus we know)
+    # it has to be zero in
+    unknown = cv2.subtract(sure_bg, sure_fg)
+    markers = np.uint8(GT_image) + 1
+    markers[unknown == 255] = 0
+    watershedImage = cv2.cvtColor(NewImage.astype('uint8'), cv2.COLOR_GRAY2RGB)
+    GroundTruthImage = cv2.watershed(watershedImage, markers.astype('int32'))
+    GroundTruthImage[GroundTruthImage == -1] = 1
+    return np.uint8(GroundTruthImage - 1)
 
-# create a way to segment the image (this could be made easier by segmenting in ilastik)
-# ret, thresh_raw = cv2.threshold(bothchannels.astype('uint8'),0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
-# ret, thresh_normalized = cv2.threshold(bothNorm.astype('uint8'),0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
-# ret, thresh_enhanced = cv2.threshold(bothEnhanced.astype('uint8'),0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
-ret, thresh_manual = cv2.threshold(bothchannels, 500, 255, cv2.THRESH_BINARY)
-# show_n_images(thresh_raw, thresh_normalized, thresh_enhanced, thresh_manual)
-# plt.show()
-sure_bg = np.uint8(thresh_manual)
-ret, sure_fg = cv2.threshold(SegmentedNucleus.astype('uint8'),0,255,cv2.THRESH_BINARY)
-sure_fg = np.uint8(sure_fg)
-unknown = cv2.subtract(sure_bg, sure_fg)
-show_n_images(SegmentedNucleus, sure_bg, sure_fg, unknown)
-markers = np.uint8(SegmentedNucleus)+1
-markers[unknown == 255] = 0
-plt.imshow(markers, cmap = 'jet')
-watershedImage = cv2.cvtColor(bothchannels.astype('uint8'), cv2.COLOR_GRAY2RGB)
-GroundTruthImage = cv2.watershed(watershedImage, markers.astype('int32'))
-GroundTruthImage = np.uint8(GroundTruthImage+1)
-show_n_images(markers, GroundTruthImage)
+
+path = 'e:\\EMBL data\\Jes 3D 3C plate 2__2019-12-11T10_29_03-Measurement 1\\Classification_Ilastik\\Control\\'
+filenameNuc = 'r01c03f06_5frames_MIP_GT.h5'
+filename2ch = 'r01c03f06_5frames_MIP.h5'
+
+rows = ['r01', 'r02', 'r03', 'r04', 'r05', 'r06', 'r07', 'r08']
+columns = ['c01', 'c02', 'c03', 'c04', 'c05', 'c06', 'c07', 'c08', 'c09', 'c10', 'c11', 'c12']
+fields = ['f01', 'f02', 'f03', 'f04', 'f05', 'f06', 'f07', 'f08']
+
+for Labelindex, row in enumerate(rows):
+    for Conditionindex, column in enumerate(columns):
+        for field in fields:
+            filenameNuc = row+column+field+ '_5frames_MIP_GT.h5'
+            filename2ch = row+column+field+ '_5frames_MIP.h5'
+            #meed to load 3 files:
+            # A: image with segmented and annotated nucleus,
+            # B: Image with the actin channel common for all
+            # C: channel with the green 'variable' channel
+
+            #A
+            with h5py.File(path + "Nucleus\\" + filenameNuc, 'r') as fNuc:
+                NucleusImageData = fNuc['exported_data'][()]
+            SegmentedNucleus = NucleusImageData[0, 0, :, :, 0]
+
+            #B
+            with h5py.File(path + "actin_2ch\\" + filename2ch, 'r') as fAct:
+                ImageDataActin = fAct['data'][()]
+            # extract the two channels
+            Actin = ImageDataActin[0, 0, :, :, 1]
+            nucleus = ImageDataActin[0, 0, :, :, 0]
+            ActNuc = Actin + nucleus
+
+            #tranfer the groundtruth
+            GroundTruthImageAct = transfergroundtruth(SegmentedNucleus, ActNuc, 500)
+            #show_n_images(SegmentedNucleus, bothchannels, GroundTruthImage)
+            GroundTruthExportAct = np.zeros((NucleusImageData.shape), 'uint8')
+            GroundTruthExportAct[0, 0, :, :, 0] = GroundTruthImageAct
+
+            # save the new h5 file
+            savefilename = filename2ch = 'r01c03f06_5frames_MIP_GT.h5'
+            with h5py.File(path + "actin_2ch\\" + savefilename, 'w') as fNew:
+                fNew.create_dataset('exported_data', shape=GroundTruthExportAct.shape, data=GroundTruthExportAct)
+
+            #C
+            #determine what kind the green signal is (mito, tubulin or chromatin)
+            # Chromatin is a special case as the nucleus mask will just be used
+            if row == 'r03' or row == 'r04':
+                subfolder = "Cromatin_2ch\\"
+            elif row == 'r07' or row == 'r08':
+                subfolder = "Mito_2ch\\"
+                GFPTheshold = 500
+            else:
+                subfolder = "Tub_2ch\\"
+                GFPTheshold = 500
+
+            if subfolder == "Cromatin_2ch\\":
+                GroundTruthExportGFP = NucleusImageData
+            else:
+                with h5py.File(path + subfolder + filename2ch, 'r') as fGFP:
+                    ImageDataGFP = fGFP['data'][()]
+                # extract the two channels
+                GFP = ImageDataGFP[0, 0, :, :, 1]
+                nucleus = ImageDataGFP[0, 0, :, :, 0]
+                GFPNuc = GFP + nucleus
+
+                # tranfer the groundtruth
+                GroundTruthImageGFP = transfergroundtruth(SegmentedNucleus, GFPNuc, GFPTheshold)
+                # show_n_images(SegmentedNucleus, bothchannels, GroundTruthImage)
+                GroundTruthExportGFP = np.zeros((NucleusImageData.shape), 'uint8')
+                GroundTruthExportGFP[0, 0, :, :, 0] = GroundTruthImageGFP
+
+            with h5py.File(path + subfolder + savefilename, 'w') as fNewGFP:
+                fNewGFP.create_dataset('exported_data', GroundTruthExportGFP.shape, data= GroundTruthExportGFP)
+
+        print(f'Just finished row: {row}, column: {column}')
+
+
